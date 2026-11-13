@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protein Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: daily scoreboard on top, four eating windows, log box, then history. Two columns on wide screens. */
+  --bg:#edf0ec; --surface:#ffffff; --sunk:#f5f7f4; --ink:#14201a; --muted:#5d6a62; --line:#d6ddd7;
+  --accent:#1d6b57; --accent-soft:#d9ece5; --on-accent:#ffffff;
+  --good:#1f8a4c; --warn:#b8700e; --bad:#b4432f;
+  --display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1411; --surface:#161e1a; --sunk:#121915; --ink:#e4ebe6; --muted:#93a198; --line:#28332d;
+    --accent:#52bf9e; --accent-soft:#1d3a30; --on-accent:#08130e;
+    --good:#4cc47e; --warn:#e3a043; --bad:#e2735f; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1411; --surface:#161e1a; --sunk:#121915; --ink:#e4ebe6; --muted:#93a198; --line:#28332d;
+  --accent:#52bf9e; --accent-soft:#1d3a30; --on-accent:#08130e;
+  --good:#4cc47e; --warn:#e3a043; --bad:#e2735f; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding:20px 16px 48px}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font:700 30px/1 var(--display);letter-spacing:.01em;margin:0;text-transform:uppercase}
+h2{font:600 19px/1.1 var(--display);text-transform:uppercase;letter-spacing:.04em;margin:0 0 12px}
+.datenav{display:flex;align-items:center;gap:6px}
+.datenav span{font-weight:600;min-width:132px;text-align:center}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 12px}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button.icon{padding:6px 10px;line-height:1}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:grid;gap:16px}
+@media (max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.status{font-size:13px;color:var(--warn)}
+.status:empty{display:none}
+
+/* Scoreboard */
+.score{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center}
+.ring{position:relative;width:132px;height:132px}
+.ring svg{transform:rotate(-90deg)}
+.ring .val{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .big{font:700 40px/1 var(--display);font-variant-numeric:tabular-nums}
+.ring .of{font-size:12px;color:var(--muted)}
+.nudge{font-size:17px;font-weight:600;line-height:1.35;text-wrap:balance;margin:0 0 6px}
+.sub{color:var(--muted);font-size:13px;margin:0}
+.kpis{display:flex;flex-wrap:wrap;gap:18px;margin-top:10px}
+.kpi b{display:block;font:600 22px/1 var(--display);font-variant-numeric:tabular-nums}
+.kpi small{color:var(--muted);font-size:12px}
+@media (max-width:420px){.score{grid-template-columns:1fr;justify-items:center;text-align:center}.kpis{justify-content:center}}
+
+/* Windows */
+.windows{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:560px){.windows{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.win{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--sunk);display:grid;gap:6px;position:relative}
+.win.now{border-color:var(--accent);background:var(--accent-soft)}
+.win .name{font:600 16px/1 var(--display);text-transform:uppercase;letter-spacing:.04em}
+.win .nums{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+.win .nums b{font:600 22px/1 var(--display);color:var(--ink)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.win .tip{font-size:12px;color:var(--muted);line-height:1.35}
+.pill{justify-self:start;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid currentColor;text-transform:uppercase;letter-spacing:.04em}
+.pill.hit{color:var(--good)} .pill.short{color:var(--bad)} .pill.now{color:var(--accent)} .pill.later{color:var(--muted)}
+
+/* Log */
+.logrow{display:flex;gap:8px;flex-wrap:wrap}
+.logrow input[type=text]{flex:1 1 220px;min-width:0;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);color:var(--ink)}
+.photo{display:inline-flex;align-items:center;gap:6px}
+.photo input{position:absolute;width:1px;height:1px;opacity:0}
+.thumb{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--muted)}
+.thumb img{width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.chips button{font-size:13px;padding:6px 10px;border-radius:99px;background:var(--sunk)}
+.chips button b{font-weight:600;color:var(--accent);margin-left:4px;font-variant-numeric:tabular-nums}
+.label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 0}
+.review{margin-top:14px;border:1px solid var(--accent);border-radius:10px;padding:14px;background:var(--accent-soft);display:grid;gap:10px}
+.review:empty{display:none}
+.review ul{margin:0;padding-left:18px;font-size:14px}
+.review li span{color:var(--muted)}
+.fields{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.fields label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.fields input,.fields select{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:110px}
+.fields select{width:auto}
+.conf{font-size:12px;color:var(--muted)}
+.thinking{font-size:13px;color:var(--muted)}
+
+/* Entries */
+.entries{display:grid;gap:0}
+.entry{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.entry:last-child{border-bottom:0}
+.entry .t{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;width:44px}
+.entry .n{min-width:0}
+.entry .n small{display:block;color:var(--muted);font-size:12px}
+.entry .p{font:600 20px/1 var(--display);font-variant-numeric:tabular-nums}
+.entry .p small{font:400 12px var(--body);color:var(--muted)}
+.entry button{border:0;background:none;color:var(--muted);padding:4px 6px}
+.entry button:hover{color:var(--bad)}
+.empty{color:var(--muted);font-size:14px;margin:0}
+
+/* History */
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font:11px var(--body)}
+.chart .tgt{stroke:var(--ink);stroke-dasharray:4 4;opacity:.45}
+.chart rect.b{cursor:pointer}
+.stats{display:flex;flex-wrap:wrap;gap:18px;margin-top:8px}
+.waist{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.waist input,.waist select{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);color:var(--ink)}
+.waist input{width:90px}
+.wlist{font-size:13px;color:var(--muted);margin:10px 0 0;font-variant-numeric:tabular-nums}
+.note{font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion:no-preference){.bar i,.ring circle{transition:all .4s ease}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Protein Tracker</h1>
+      <p class="sub">Daily target 130 g across four eating windows</p>
+    </div>
+    <div class="datenav">
+      <button class="icon" id="prev" aria-label="Previous day">‹</button>
+      <span id="dateLabel">Today</span>
+      <button class="icon" id="next" aria-label="Next day">›</button>
+    </div>
+  </header>
+  <div class="status" id="status" role="status"></div>
+
+  <div class="grid">
+    <div class="col">
+      <section class="card score" id="score" aria-label="Today's total"></section>
+
+      <section class="card">
+        <h2>Eating windows</h2>
+        <div class="windows" id="windows"></div>
+      </section>
+
+      <section class="card">
+        <h2>Log food</h2>
+        <form class="logrow" id="logForm">
+          <input type="text" id="foodInput" placeholder="e.g. Greggs chicken bake, or 2 eggs on toast" autocomplete="off" aria-label="What did you eat?">
+          <label class="photo"><button type="button" id="photoBtn">Photo</button><input type="file" id="photoInput" accept="image/*" aria-label="Add a photo of your food"></label>
+          <button type="submit" class="primary" id="estimateBtn">Estimate</button>
+        </form>
+        <div id="thumb"></div>
+        <div class="review" id="review"></div>
+        <p class="label">Quick add</p>
+        <div class="chips" id="quick"></div>
+        <div id="recentWrap"></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <h2 id="entriesTitle">Today's log</h2>
+        <div class="entries" id="entries"></div>
+      </section>
+
+      <section class="card">
+        <h2>Last 14 days</h2>
+        <div id="history"></div>
+      </section>
+
+      <section class="card">
+        <h2>Weekly waist check</h2>
+        <form class="waist" id="waistForm">
+          <label class="fields" style="display:grid;gap:4px;font-size:12px;color:var(--muted)">Waist
+            <input type="number" step="0.1" min="15" max="200" id="waistInput" placeholder="34.5">
+          </label>
+          <select id="waistUnit" aria-label="Unit"><option value="in">inches</option><option value="cm">cm</option></select>
+          <button type="submit">Save</button>
+        </form>
+        <p class="note">Measure at belly-button height, first thing in the morning, once a week. Your waist changes before the mirror does.</p>
+        <div id="waistList"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script>
+(() => {
+const WINDOWS = [
+  {id:'breakfast', label:'Breakfast', target:35, from:0,  to:11, tip:'Appetite is normal. Eggs plus Greek yoghurt or skyr.'},
+  {id:'midday',    label:'Midday',    target:30, from:11, to:16, tip:'Low appetite. Drink it: a ready-made protein shake.'},
+  {id:'dinner',    label:'Dinner',    target:40, from:16, to:20, tip:'A palm-and-a-half of chicken, mince or fish.'},
+  {id:'evening',   label:'Evening',   target:25, from:20, to:24, tip:'Appetite is back. Skyr, cottage cheese or a shake.'},
+];
+const DAILY = WINDOWS.reduce((s,w)=>s+w.target,0);
+const QUICK = [
+  {name:'Protein shake (ready-made)', protein:30, kcal:180},
+  {name:'Skyr pot (150 g)', protein:16, kcal:95},
+  {name:'Greek yoghurt 0% (170 g)', protein:17, kcal:100},
+  {name:'2 eggs', protein:13, kcal:150},
+  {name:'Chicken breast (150 g)', protein:45, kcal:240},
+  {name:'Tin of tuna', protein:25, kcal:110},
+  {name:'Cottage cheese (150 g)', protein:16, kcal:120},
+  {name:'Protein bar', protein:20, kcal:200},
+];
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayKey = () => keyOf(new Date());
+const parseKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); };
+const shift = (k,n) => { const d = parseKey(k); d.setDate(d.getDate()+n); return keyOf(d); };
+const windowAt = h => (WINDOWS.find(w => h >= w.from && h < w.to) || WINDOWS[3]).id;
+const uidGen = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+
+let db = null, uid = null, sample = null, canImages = false, mode = 'loading';
+let days = {};
+let viewDate = todayKey();
+let lastPending = null, photoTakenAt = null;
+const toLocalInput = d => `${keyOf(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const fmtWhen = d => d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) + ', ' + d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+async function readTakenAt(file){
+  try {
+    if (window.exifr) {
+      const m = await window.exifr.parse(file, ['DateTimeOriginal','CreateDate','DateTimeDigitized','ModifyDate']);
+      const d = m && (m.DateTimeOriginal || m.CreateDate || m.DateTimeDigitized || m.ModifyDate);
+      if (d instanceof Date && !isNaN(d) && d <= new Date(Date.now()+60000)) return d;
+    }
+  } catch {}
+  // Fallback: file's modified time, only if clearly not "just now"
+  if (file.lastModified && Date.now() - file.lastModified > 10*60*1000) return new Date(file.lastModified);
+  return null;
+}
+function defaultWhen(){
+  if (photoTakenAt) return photoTakenAt;
+  const now = new Date();
+  if (viewDate === todayKey()) return now;
+  const d = parseKey(viewDate); d.setHours(now.getHours(), now.getMinutes()); return d;
+}
+let pending = null, busy = false, photoBlob = null, photoURL = null;
+let statusMsg = '';
+let writeChain = Promise.resolve();
+
+function setStatus(m){ statusMsg = m || ''; $('#status').textContent = statusMsg; }
+
+/* ---------- storage ---------- */
+function loadLocal(){
+  try { days = JSON.parse(localStorage.getItem('protein-days') || '{}') || {}; } catch { days = {}; }
+}
+function saveLocal(){
+  try { localStorage.setItem('protein-days', JSON.stringify(days)); } catch {}
+}
+function useLocal(){
+  mode = 'local'; loadLocal();
+  setStatus('Saving on this device only. Open the page signed in to Claude to keep history across devices.');
+  render();
+}
+function dayOf(k){
+  const d = days[k];
+  return d ? {date:k, entries:[...(d.entries||[])], waist:d.waist||null} : {date:k, entries:[], waist:null};
+}
+function saveDay(body){
+  days = {...days, [body.date]: body};
+  render();
+  if (mode === 'db') {
+    writeChain = writeChain
+      .then(() => db.collection('data/users/' + uid).doc(body.date).set(body))
+      .catch(e => setStatus(e && e.code === 'quota_exceeded' ? 'Storage is full, so this change was not saved.' : 'Could not save that change. Check your connection and try again.'));
+  } else saveLocal();
+}
+
+function subscribe(){
+  let settled = false;
+  const timer = setTimeout(() => { if (!settled) setStatus('Your saved history can’t be reached yet. New entries will still save.'); }, 10000);
+  db.collection('data/users/' + uid).orderBy('date','desc').limit(90).onSnapshot(snap => {
+    if (!snap.metadata.fromCache) { settled = true; clearTimeout(timer); if (statusMsg.startsWith('Your saved')) setStatus(''); }
+    const next = {};
+    snap.docs.forEach(doc => { const v = doc.data(); if (v && v.date) next[v.date] = v; });
+    days = next;
+    render();
+  }, err => {
+    settled = true; clearTimeout(timer);
+    setStatus('Could not load your saved history (' + (err && err.code) + ').');
+  });
+}
+
+async function init(){
+  render();
+  const c = window.claude;
+  if (!c || typeof c.use !== 'function') { useLocal(); return; }
+  const safe = p => Promise.resolve(p).catch(() => null);
+  const [d, u, s] = await Promise.all([safe(c.use('db')), safe(c.use('user')), safe(c.use('sample'))]);
+  sample = s;
+  if (s && typeof s.limits === 'function') { try { const l = await s.limits(); canImages = !!(l && l.images); } catch {} }
+  if (d && u) { try { uid = await u.id(); } catch {} }
+  if (d && uid) { db = d; mode = 'db'; subscribe(); } else useLocal();
+  render();
+}
+
+/* ---------- logic ---------- */
+function totals(day){
+  const byWin = Object.fromEntries(WINDOWS.map(w => [w.id, 0]));
+  let protein = 0, kcal = 0;
+  day.entries.forEach(e => { byWin[e.window] = (byWin[e.window]||0) + (+e.protein||0); protein += +e.protein||0; kcal += +e.kcal||0; });
+  return {byWin, protein, kcal};
+}
+function nudge(day, t){
+  const isToday = day.date === todayKey();
+  const left = Math.max(0, DAILY - t.protein);
+  if (!isToday) return t.protein >= DAILY*0.9 ? 'Target hit on this day.' : `Finished ${Math.round(t.protein)} g, ${left} g short of target.`;
+  if (left === 0) return 'Target hit. Nice work.';
+  const h = new Date().getHours();
+  const idx = WINDOWS.findIndex(w => w.id === windowAt(h));
+  const cur = WINDOWS[idx];
+  let behind = 0;
+  for (let i = 0; i < idx; i++) behind += Math.max(0, WINDOWS[i].target - t.byWin[WINDOWS[i].id]);
+  const curLeft = Math.max(0, cur.target - t.byWin[cur.id]);
+  if (cur.id === 'midday' && curLeft > 0) return `Midday: ${curLeft + behind} g to go. Grab your protein shake.`;
+  if (curLeft + behind > 0) return `${cur.label}: aim for ${curLeft + behind} g now${behind ? ` (includes ${behind} g from earlier)` : ''}.`;
+  const nxt = WINDOWS[idx+1];
+  return nxt ? `${cur.label} done. Next up: ${nxt.label.toLowerCase()}, about ${nxt.target} g.` : `${left} g left for today.`;
+}
+
+/* ---------- render ---------- */
+function render(){
+  const day = dayOf(viewDate);
+  const t = totals(day);
+  const isToday = viewDate === todayKey();
+  const d = parseKey(viewDate);
+  $('#dateLabel').textContent = isToday ? 'Today' : d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+  $('#next').disabled = isToday;
+  $('#entriesTitle').textContent = isToday ? 'Today’s log' : 'Log for ' + d.toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+
+  // Scoreboard
+  const pct = Math.min(1, t.protein / DAILY);
+  const C = 2*Math.PI*56;
+  const left = Math.max(0, DAILY - Math.round(t.protein));
+  $('#score').innerHTML = `
+    <div class="ring">
+      <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
+        <circle cx="66" cy="66" r="56" fill="none" stroke="var(--line)" stroke-width="12"/>
+        <circle cx="66" cy="66" r="56" fill="none" stroke="${pct>=0.9?'var(--good)':'var(--accent)'}" stroke-width="12" stroke-linecap="round"
+          stroke-dasharray="${C}" stroke-dashoffset="${C*(1-pct)}"/>
+      </svg>
+      <div class="val"><span class="big">${Math.round(t.protein)}</span><span class="of">of ${DAILY} g</span></div>
+    </div>
+    <div>
+      <p class="nudge">${esc(mode==='loading' ? 'Loading your day…' : nudge(day, t))}</p>
+      <div class="kpis">
+        <div class="kpi"><b>${left} g</b><small>protein left</small></div>
+        <div class="kpi"><b>${Math.round(t.kcal).toLocaleString('en-GB')}</b><small>kcal logged</small></div>
+        <div class="kpi"><b>${day.entries.length}</b><small>items</small></div>
+      </div>
+    </div>`;
+
+  // Windows
+  const h = new Date().getHours();
+  const nowId = isToday ? windowAt(h) : null;
+  const nowIdx = isToday ? WINDOWS.findIndex(w=>w.id===nowId) : 99;
+  $('#windows').innerHTML = WINDOWS.map((w,i) => {
+    const got = Math.round(t.byWin[w.id]);
+    const hit = got >= w.target*0.9;
+    let pill;
+    if (hit) pill = '<span class="pill hit">Hit</span>';
+    else if (i < nowIdx) pill = `<span class="pill short">${w.target-got} g short</span>`;
+    else if (i === nowIdx) pill = '<span class="pill now">Now</span>';
+    else pill = '<span class="pill later">Later</span>';
+    return `<div class="win ${w.id===nowId?'now':''}">
+      <span class="name">${w.label}</span>
+      <span class="nums"><b>${got}</b> / ${w.target} g</span>
+      <div class="bar"><i style="width:${Math.min(100, got/w.target*100)}%"></i></div>
+      ${pill}
+      <span class="tip">${esc(w.tip)}</span>
+    </div>`;
+  }).join('');
+
+  // Quick add
+  $('#quick').innerHTML = QUICK.map((q,i) => `<button type="button" data-q="${i}">${esc(q.name)}<b>${q.protein} g</b></button>`).join('');
+
+  // Recent foods
+  const seen = new Set(), recent = [];
+  Object.keys(days).sort().reverse().forEach(k => (days[k].entries||[]).slice().reverse().forEach(e => {
+    const key = (e.name||'').toLowerCase();
+    if (e.source === 'ai' && key && !seen.has(key) && recent.length < 8) { seen.add(key); recent.push(e); }
+  }));
+  $('#recentWrap').innerHTML = recent.length ? `<p class="label">Your recent meals</p><div class="chips">${
+    recent.map((e,i)=>`<button type="button" data-r="${i}">${esc(e.name)}<b>${Math.round(e.protein)} g</b></button>`).join('')}</div>` : '';
+  $('#recentWrap').querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+    const e = recent[+b.dataset.r]; addEntry({name:e.name, protein:e.protein, kcal:e.kcal, source:'ai', detail:e.detail});
+  });
+
+  // Photo thumb
+  $('#thumb').innerHTML = photoURL ? `<div class="thumb"><img src="${photoURL}" alt="Your food photo"><span>${canImages ? 'Photo attached' : 'Photos aren’t available here, so add a short description too'}<br>${photoTakenAt ? 'Taken ' + esc(fmtWhen(photoTakenAt)) : 'No date found in this photo, so it will use now'}</span><button type="button" id="clearPhoto">Remove</button></div>` : '';
+  const cp = $('#clearPhoto'); if (cp) cp.onclick = clearPhoto;
+
+  renderReview();
+
+  // Entries
+  const list = day.entries.slice().sort((a,b)=> (a.t||'').localeCompare(b.t||''));
+  $('#entries').innerHTML = list.length ? list.map(e => {
+    const time = e.t ? new Date(e.t).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) : '';
+    const wl = (WINDOWS.find(w=>w.id===e.window)||{}).label || '';
+    return `<div class="entry">
+      <span class="t">${time}</span>
+      <span class="n">${esc(e.name)}<small>${esc(wl)}${e.kcal ? ' · ' + Math.round(e.kcal) + ' kcal' : ''}${e.detail ? ' · ' + esc(e.detail) : ''}</small></span>
+      <span class="p">${Math.round(e.protein)}<small> g</small></span>
+      <button type="button" data-del="${esc(e.id)}" aria-label="Remove ${esc(e.name)}">✕</button>
+    </div>`;}).join('') : `<p class="empty">${isToday ? 'Nothing logged yet. Type or photograph what you eat, or tap a quick add.' : 'Nothing logged on this day.'}</p>`;
+  $('#entries').querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeEntry(b.dataset.del));
+
+  renderHistory();
+  renderWaist();
+}
+
+function renderReview(){
+  const el = $('#review');
+  if (busy) { el.innerHTML = '<p class="thinking">Estimating…</p>'; return; }
+  if (!pending) { el.innerHTML = ''; lastPending = null; return; }
+  if (pending === lastPending && el.innerHTML) return; // keep the user's edits
+  lastPending = pending;
+  el.innerHTML = `
+    <strong>${esc(pending.summary)}</strong>
+    <ul>${pending.items.map(i=>`<li>${esc(i.name)}${i.portion?` <span>(${esc(i.portion)})</span>`:''}: ${Math.round(i.protein_g)} g protein, ${Math.round(i.kcal)} kcal</li>`).join('')}</ul>
+    ${pending.tip ? `<p class="conf">Tip: ${esc(pending.tip)}</p>` : ''}
+    <p class="conf">Confidence: ${esc(pending.confidence)}. Adjust the numbers if you know better.</p>
+    <div class="fields">
+      <label for="rvP">Protein (g)<input id="rvP" type="number" min="0" step="1" value="${Math.round(pending.protein)}"></label>
+      <label for="rvK">Calories<input id="rvK" type="number" min="0" step="10" value="${Math.round(pending.kcal)}"></label>
+      <label for="rvT">When<input id="rvT" type="datetime-local" style="width:auto" max="${toLocalInput(new Date())}" value="${toLocalInput(pending.when)}"></label>
+      <label for="rvW">Window<select id="rvW">${WINDOWS.map(w=>`<option value="${w.id}" ${w.id===pending.window?'selected':''}>${w.label}</option>`).join('')}</select></label>
+      <button type="button" class="primary" id="rvSave">Add to log</button>
+      <button type="button" id="rvCancel">Discard</button>
+    </div>`;
+  $('#rvT').onchange = () => {
+    const d = new Date($('#rvT').value);
+    if (!isNaN(d)) { pending.when = d; pending.window = windowAt(d.getHours()); $('#rvW').value = pending.window; }
+  };
+  $('#rvW').onchange = () => { pending.window = $('#rvW').value; };
+  $('#rvSave').onclick = () => {
+    const p = Math.max(0, +$('#rvP').value || 0), k = Math.max(0, +$('#rvK').value || 0), w = $('#rvW').value;
+    const tv = new Date($('#rvT').value);
+    addEntry({name:pending.summary, protein:p, kcal:k, window:w, when: isNaN(tv) ? pending.when : tv, source:'ai', detail:pending.items.length>1 ? pending.items.map(i=>i.name).join(', ').slice(0,90) : ''});
+    pending = null; $('#foodInput').value = ''; clearPhoto();
+  };
+  $('#rvCancel').onclick = () => { pending = null; render(); };
+}
+
+function renderHistory(){
+  const N = 14, today = todayKey();
+  const keys = Array.from({length:N}, (_,i) => shift(today, i-(N-1)));
+  const vals = keys.map(k => totals(dayOf(k)).protein);
+  const W = 420, H = 150, padL = 28, padB = 22, top = 8;
+  const max = Math.max(DAILY*1.25, ...vals);
+  const y = v => top + (H-top-padB) * (1 - v/max);
+  const bw = (W-padL) / N;
+  const bars = keys.map((k,i) => {
+    const v = vals[i], x = padL + i*bw + 3, hgt = (H-padB) - y(v);
+    const col = v >= DAILY*0.9 ? 'var(--good)' : v > 0 ? 'var(--accent)' : 'var(--line)';
+    const d = parseKey(k);
+    const lbl = d.toLocaleDateString('en-GB',{weekday:'narrow'});
+    const sel = k === viewDate ? 'stroke="var(--ink)" stroke-width="1.5"' : '';
+    return `<rect class="b" data-k="${k}" x="${x}" y="${v>0?y(v):H-padB-2}" width="${bw-6}" height="${v>0?Math.max(2,hgt):2}" rx="3" fill="${col}" ${sel}><title>${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}: ${Math.round(v)} g</title></rect>
+      <text x="${x+(bw-6)/2}" y="${H-6}" text-anchor="middle">${lbl}</text>`;
+  }).join('');
+  const last7 = vals.slice(-7);
+  const avg7 = Math.round(last7.reduce((a,b)=>a+b,0)/7);
+  const hits7 = last7.filter(v=>v>=DAILY*0.9).length;
+  let streak = 0;
+  for (let i = vals.length-1; i >= 0; i--) {
+    if (vals[i] >= DAILY*0.9) streak++;
+    else if (i === vals.length-1) continue; // today still in progress
+    else break;
+  }
+  $('#history').innerHTML = `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Protein per day for the last 14 days">
+      <line class="tgt" x1="${padL}" x2="${W}" y1="${y(DAILY)}" y2="${y(DAILY)}"/>
+      <text x="0" y="${y(DAILY)+4}">${DAILY}</text>
+      <text x="0" y="${H-padB+4}">0</text>
+      ${bars}
+    </svg>
+    <div class="stats">
+      <div class="kpi"><b>${avg7} g</b><small>7-day average</small></div>
+      <div class="kpi"><b>${hits7} / 7</b><small>days on target</small></div>
+      <div class="kpi"><b>${streak}</b><small>day streak</small></div>
+    </div>
+    <p class="note">Tap a bar to open that day. Green means within 10% of target.</p>`;
+  $('#history').querySelectorAll('rect.b').forEach(r => r.onclick = () => { viewDate = r.dataset.k; pending = null; render(); });
+}
+
+function renderWaist(){
+  const rows = Object.keys(days).sort().filter(k => days[k].waist).map(k => ({k, ...days[k].waist}));
+  if (!rows.length) { $('#waistList').innerHTML = ''; return; }
+  const first = rows[0], last = rows[rows.length-1];
+  const diff = first.unit === last.unit ? (last.value - first.value) : null;
+  $('#waistList').innerHTML = `<p class="wlist">${rows.slice(-6).map(r => `${parseKey(r.k).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}: <b>${r.value} ${r.unit}</b>`).join(' &nbsp;·&nbsp; ')}</p>
+    ${diff !== null && rows.length > 1 ? `<p class="wlist">Change since ${parseKey(first.k).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}: <b style="color:${diff<=0?'var(--good)':'var(--warn)'}">${diff>0?'+':''}${diff.toFixed(1)} ${last.unit}</b></p>` : ''}`;
+}
+
+/* ---------- actions ---------- */
+function addEntry({name, protein, kcal, window, source, detail, when}){
+  when = when || defaultWhen();
+  const k = keyOf(when);
+  const day = dayOf(k);
+  if (k !== viewDate) { viewDate = k; setStatus('Added to ' + fmtWhen(when) + '.'); }
+  day.entries.push({
+    id: uidGen(), t: when.toISOString(),
+    window: window || windowAt(when.getHours()),
+    name: String(name).slice(0,80), protein: Math.round(+protein||0), kcal: Math.round(+kcal||0),
+    source: source || 'quick', detail: detail ? String(detail).slice(0,100) : ''
+  });
+  saveDay(day);
+}
+function removeEntry(id){
+  const day = dayOf(viewDate);
+  day.entries = day.entries.filter(e => e.id !== id);
+  saveDay(day);
+}
+function clearPhoto(){
+  if (photoURL) URL.revokeObjectURL(photoURL);
+  photoURL = null; photoBlob = null; photoTakenAt = null; $('#photoInput').value = ''; render();
+}
+async function shrink(file){
+  try {
+    const img = await createImageBitmap(file);
+    const s = Math.min(1, 1024 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise(r => c.toBlob(b => r(b || file), 'image/jpeg', 0.82));
+  } catch { return file; }
+}
+
+async function estimate(){
+  const text = $('#foodInput').value.trim();
+  const usePhoto = photoBlob && canImages;
+  if (!text && !usePhoto) { setStatus(photoBlob ? 'Add a short description, as photos aren’t available here.' : 'Type what you ate or add a photo first.'); return; }
+  if (!sample) { setStatus('Estimates need Claude, which isn’t available in this view. Use quick add instead.'); return; }
+  setStatus(''); busy = true; pending = null; renderReview(); $('#estimateBtn').disabled = true;
+  const prompt = `You estimate protein and calories for food logged in a personal protein tracker used in the UK.
+User's description: ${text ? JSON.stringify(text) : '(none, use the photo)'}
+${usePhoto ? 'A photo of the food is attached. Identify each food and estimate portion size from the photo.' : ''}
+Use typical UK portion sizes. If a UK shop, chain or brand is named (e.g. Tesco, M&S, Greggs, Pret, Nando's, Myprotein), use that product's published nutrition if you know it. If a quantity is given, use it.
+Reply with ONLY a JSON object, no other text:
+{"items":[{"name":string,"portion":string,"protein_g":number,"kcal":number}],
+ "summary":string (a short meal name, max 6 words, e.g. "Chicken wrap and chips"),
+ "confidence":"high"|"medium"|"low",
+ "tip":string (optional, one short sentence on an easy way to add protein to this meal, or "" if it's already high-protein)}`;
+  try {
+    const opts = {modelTier:'default'};
+    if (usePhoto) opts.images = [photoBlob];
+    const r = await sample.json(prompt, opts);
+    const items = Array.isArray(r && r.items) ? r.items.filter(i => i && i.name).map(i => ({name:String(i.name), portion:String(i.portion||''), protein_g:+i.protein_g||0, kcal:+i.kcal||0})) : [];
+    if (!items.length) throw {code:'empty'};
+    pending = {
+      summary: String(r.summary || items[0].name).slice(0,60),
+      items,
+      protein: items.reduce((s,i)=>s+i.protein_g,0),
+      kcal: items.reduce((s,i)=>s+i.kcal,0),
+      confidence: ['high','medium','low'].includes(r.confidence) ? r.confidence : 'medium',
+      tip: r.tip ? String(r.tip).slice(0,160) : '',
+      when: defaultWhen()
+    };
+    pending.window = windowAt(pending.when.getHours());
+  } catch (e) {
+    const code = e && e.code;
+    setStatus(code === 'not_granted' ? 'Claude access wasn’t allowed, so estimates are off. Quick add still works.'
+      : code === 'rate_limited' ? 'Too many estimates in a row. Wait a minute and try again.'
+      : 'Couldn’t estimate that. Try describing it a little differently.');
+  } finally {
+    busy = false; $('#estimateBtn').disabled = false; render();
+  }
+}
+
+/* ---------- wiring ---------- */
+$('#logForm').addEventListener('submit', e => { e.preventDefault(); estimate(); });
+$('#photoBtn').onclick = () => $('#photoInput').click();
+$('#photoInput').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (photoURL) URL.revokeObjectURL(photoURL);
+  photoTakenAt = await readTakenAt(f);
+  if (pending) { pending.when = defaultWhen(); pending.window = windowAt(pending.when.getHours()); lastPending = null; }
+  photoBlob = await shrink(f);
+  photoURL = URL.createObjectURL(photoBlob);
+  render();
+});
+$('#quick').addEventListener('click', e => {
+  const b = e.target.closest('[data-q]'); if (!b) return;
+  const q = QUICK[+b.dataset.q]; addEntry({...q, source:'quick'});
+});
+$('#prev').onclick = () => { viewDate = shift(viewDate, -1); pending = null; render(); };
+$('#next').onclick = () => { if (viewDate < todayKey()) { viewDate = shift(viewDate, 1); pending = null; render(); } };
+try { const u = localStorage.getItem('protein-waist-unit'); if (u) $('#waistUnit').value = u; } catch {}
+$('#waistForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = parseFloat($('#waistInput').value);
+  if (!(v > 0)) { setStatus('Enter your waist measurement first.'); return; }
+  const unit = $('#waistUnit').value;
+  try { localStorage.setItem('protein-waist-unit', unit); } catch {}
+  const day = dayOf(viewDate); day.waist = {value: Math.round(v*10)/10, unit};
+  $('#waistInput').value = ''; setStatus(''); saveDay(day);
+});
+setInterval(() => { if (!pending && !busy) render(); }, 60000);
+
+init();
+})();
+</script>
+</body>
+</html>
