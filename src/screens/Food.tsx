@@ -3,6 +3,7 @@ import { put, remove, useStore } from '../lib/store';
 import { dayKey, fmtDay, fmtTime, parseDay, shiftDay, todayKey, uid } from '../lib/dates';
 import { toast } from '../ui/toast';
 import type { FoodEntry } from '../lib/types';
+import { estimateFood, shrink, type Estimate } from '../lib/estimate';
 
 /* Ported from the Protein Tracker: target split across four eating windows. */
 const WINDOWS = [
@@ -123,7 +124,8 @@ export default function Food() {
       </div>
 
       <h2 className="h2">Log food</h2>
-      <p className="label mb-1.5">Quick add</p>
+      <SnapEntry onAdd={add} />
+      <p className="label mt-4 mb-1.5">Quick add</p>
       <div className="flex flex-wrap gap-2">
         {QUICK.map(q => <button key={q.name} className="chip gap-2" onClick={() => add({ ...q, source: 'quick' })}>{q.name}<b>{q.protein} g</b></button>)}
       </div>
@@ -206,5 +208,71 @@ function History({ byDay, target, view, onPick }: { byDay: Map<string, FoodEntry
       <div className="mt-2 grid grid-cols-3 gap-2 text-center"><Kpi v={avg7 + ' g'} l="7-day average" /><Kpi v={hits7 + ' / 7'} l="days on target" /><Kpi v={String(streak)} l="day streak" /></div>
       <p className="mut mt-2">Tap a bar to open that day. Green means within 10% of target.</p>
     </section>
+  );
+}
+
+function SnapEntry({ onAdd }: { onAdd: (e: { name: string; protein: number; kcal: number; source: 'photo'; when?: Date }) => void }) {
+  const [mode, setMode] = useState<'meal' | 'label'>('meal');
+  const [photo, setPhoto] = useState<{ blob: Blob; url: string } | null>(null);
+  const [text, setText] = useState('');
+  const [grams, setGrams] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [est, setEst] = useState<(Estimate & { protein: string; kcal: string }) | null>(null);
+
+  const reset = () => { if (photo) URL.revokeObjectURL(photo.url); setPhoto(null); setText(''); setGrams(''); setEst(null); };
+  const pick = async (file: File | undefined, m: 'meal' | 'label') => {
+    if (!file) return;
+    setMode(m); setEst(null);
+    if (photo) URL.revokeObjectURL(photo.url);
+    const blob = await shrink(file); setPhoto({ blob, url: URL.createObjectURL(blob) });
+  };
+  const run = async () => {
+    if (!photo && !text.trim()) return toast('Take a photo or describe what you ate');
+    setBusy(true);
+    try {
+      const r = await estimateFood({ mode, text: text.trim(), grams: +grams || undefined, photo: photo?.blob });
+      const p = r.items.reduce((a, i) => a + (+i.protein_g || 0), 0), k = r.items.reduce((a, i) => a + (+i.kcal || 0), 0);
+      setEst({ ...r, protein: String(Math.round(p)), kcal: String(Math.round(k)) });
+    } catch (e) { toast((e as Error).message); }
+    finally { setBusy(false); }
+  };
+  // Label: recompute from per-100 g values when grams change
+  const regrams = (g: string) => {
+    setGrams(g);
+    const l = est?.label;
+    if (est && l && +g > 0 && l.protein_per_100g != null) {
+      setEst({ ...est, protein: String(Math.round(l.protein_per_100g * +g / 100)), kcal: l.kcal_per_100g != null ? String(Math.round(l.kcal_per_100g * +g / 100)) : est.kcal });
+    }
+  };
+
+  return (
+    <div className="card grid gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="btn cursor-pointer">📷 Snap meal<input type="file" accept="image/*" capture="environment" className="sr-only" onChange={e => { pick(e.target.files?.[0], 'meal'); e.target.value = ''; }} /></label>
+        <label className="ghost cursor-pointer">🏷️ Snap label<input type="file" accept="image/*" capture="environment" className="sr-only" onChange={e => { pick(e.target.files?.[0], 'label'); e.target.value = ''; }} /></label>
+      </div>
+      {photo && <div className="flex items-center gap-3"><img src={photo.url} alt="Your food" className="size-16 rounded-xl object-cover" /><span className="mut flex-1">{mode === 'label' ? 'Nutrition label' : 'Meal photo'}</span><button className="ghost" onClick={reset}>Remove</button></div>}
+      <input className="field" maxLength={300} value={text} onChange={e => setText(e.target.value)} placeholder={photo ? 'Add detail (optional), e.g. “large portion”' : 'Or describe it, e.g. Greggs chicken bake'} aria-label="Describe your food" />
+      {mode === 'label' && photo && <label className="label grid gap-1">How much did you eat? (g, optional)<input className="numin" inputMode="numeric" value={grams} onChange={e => regrams(e.target.value.replace(/\D/g, ''))} /></label>}
+      {!est && <button className="btn" disabled={busy} onClick={run}>{busy ? 'Estimating…' : 'Estimate'}</button>}
+      {est && (
+        <div className="grid gap-2 rounded-xl bg-bg p-3">
+          <b>{est.summary}</b>
+          <ul className="list-disc pl-5 text-sm text-mut">{est.items.map((i, k) => <li key={k}>{i.name}{i.portion ? ` (${i.portion})` : ''}: {Math.round(i.protein_g)} g protein, {Math.round(i.kcal)} kcal</li>)}</ul>
+          {est.label && est.label.protein_per_100g != null && <p className="mut">Label: {est.label.protein_per_100g} g protein{est.label.kcal_per_100g != null ? `, ${est.label.kcal_per_100g} kcal` : ''} per 100 g{est.label.serving_g ? ` · serving ${est.label.serving_g} g` : ''}</p>}
+          {est.tip && <p className="mut">Tip: {est.tip}</p>}
+          <p className="mut">Confidence: {est.confidence}. Adjust the numbers if you know better.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="label grid gap-1">Protein (g)<input className="numin" inputMode="decimal" value={est.protein} onChange={e => setEst({ ...est, protein: e.target.value.replace(/[^0-9.]/g, '') })} /></label>
+            <label className="label grid gap-1">Calories<input className="numin" inputMode="numeric" value={est.kcal} onChange={e => setEst({ ...est, kcal: e.target.value.replace(/\D/g, '') })} /></label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <button className="ghost" onClick={() => setEst(null)}>Discard</button>
+            <button className="btn" onClick={() => { onAdd({ name: est.summary.slice(0, 60), protein: +est.protein || 0, kcal: +est.kcal || 0, source: 'photo' }); reset(); }}>Add to log</button>
+          </div>
+        </div>
+      )}
+      <p className="mut">Photo estimates are free (Google Gemini) and need you signed in. Labels are read exactly; meals are a best guess.</p>
+    </div>
   );
 }
