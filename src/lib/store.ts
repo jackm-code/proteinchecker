@@ -74,11 +74,11 @@ function queue(table: TableName, id: string, kind: Op['kind']) {
   state.outbox = [...state.outbox.filter(o => !(o.table === table && o.id === id)), { table, id, kind, seq: seq++ }];
 }
 
-export function put<T extends TableName>(table: T, rows: Tables[T] | Tables[T][]) {
+export function put<T extends TableName>(table: T, rows: Tables[T] | Tables[T][], stamp = now()) {
   const list = Array.isArray(rows) ? rows : [rows];
   const t = { ...state.data[table] } as Record<string, Tables[T]>;
   for (const r of list) {
-    const row = { ...r, updated_at: now() } as Tables[T];
+    const row = { ...r, updated_at: stamp } as Tables[T];
     t[(row as { id: string }).id] = row;
     queue(table, (row as { id: string }).id, 'upsert');
   }
@@ -103,9 +103,12 @@ export const all = <T extends TableName>(table: T): Tables[T][] => Object.values
 export function ensureSeed() {
   if (state.seeded >= SEED_VERSION) return;
   const has = (t: TableName, id: string) => !!state.data[t][id];
-  put('routines', DEFAULT_ROUTINES.filter(r => !has('routines', r.id)));
-  put('workouts', SEED.workouts.filter(w => !has('workouts', w.id)));
-  put('set_logs', SEED.sets.filter(s => !has('set_logs', s.id)));
+  // Seed rows carry an old timestamp, so anything already on the server
+  // (like next week's plan from the weekly review) always wins over them.
+  const OLD = '2000-01-01T00:00:00.000Z';
+  put('routines', DEFAULT_ROUTINES.filter(r => !has('routines', r.id)), OLD);
+  put('workouts', SEED.workouts.filter(w => !has('workouts', w.id)), OLD);
+  put('set_logs', SEED.sets.filter(s => !has('set_logs', s.id)), OLD);
   state.seeded = SEED_VERSION; emit();
 }
 
@@ -162,7 +165,16 @@ export async function pull() {
       const pending = new Set(state.outbox.filter(o => o.table === table).map(o => o.id));
       const t: Record<string, unknown> = {};
       for (const r of rows) t[r.id as string] = strip(r);
-      for (const id of pending) { const local = state.data[table][id]; if (local) t[id] = local; else delete t[id]; }
+      for (const id of pending) {
+        const local = state.data[table][id] as { updated_at?: string } | undefined;
+        const server = t[id] as { updated_at?: string } | undefined;
+        // server copy is newer than our unsent change: keep the server's and drop ours
+        if (local && server && Date.parse(server.updated_at || '0') > Date.parse(local.updated_at || '0')) {
+          state.outbox = state.outbox.filter(o => !(o.table === table && o.id === id));
+          continue;
+        }
+        if (local) t[id] = local; else delete t[id];
+      }
       (next as Record<string, unknown>)[table] = t;
     }
     state.data = next as Rows; state.sync = 'synced'; state.syncError = '';
@@ -187,5 +199,10 @@ export async function initSync() {
   });
   if (state.session) await pull();
   window.addEventListener('online', () => flush());
+  // Phone apps resume rather than reload, so fetch fresh data (e.g. Monday's new plan) when reopened.
+  let lastPull = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.session && Date.now() - lastPull > 5 * 60000) { lastPull = Date.now(); pull(); }
+  });
   setInterval(() => { if (state.outbox.length) flush(); }, 30000);
 }
