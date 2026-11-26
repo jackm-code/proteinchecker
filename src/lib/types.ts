@@ -96,7 +96,7 @@ export interface FoodEntry {
   name: string;
   protein_g: number;
   kcal: number;
-  source: 'quick' | 'manual' | 'recent';
+  source: 'quick' | 'manual' | 'recent' | 'photo';
   updated_at?: string;
 }
 
