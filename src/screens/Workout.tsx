@@ -41,7 +41,7 @@ function RestBar() {
       <div className="absolute left-0 top-0 h-1 bg-white/70" style={{ width: rest ? Math.max(0, Math.min(100, left / rest.total * 100)) + '%' : 0 }} />
       <div className="mx-auto flex max-w-[720px] items-center gap-2.5 px-[max(4vw,14px)] py-2.5">
         <div className="num min-w-24 text-[44px]">{rest ? (left > 0 ? mmss(left) : 'Go') : '0:00'}</div>
-        <div className="flex-1 text-[13px] leading-tight">{rest ? (left > 0 ? 'Rest · ' + rest.label : 'Rest over · next set') : ''}</div>
+        <div className="line-clamp-3 flex-1 text-[13px] leading-tight">{rest ? (left > 0 ? 'Rest · ' + rest.label : 'Rest over · next set') : ''}</div>
         {([['-15', '−15'], ['15', '+15']] as const).map(([v, l]) => <button key={v} className="min-h-11 rounded-xl bg-white/20 px-3 font-semibold" onClick={() => adj(+v)}>{l}</button>)}
         <button className="min-h-11 rounded-xl bg-white/20 px-3 font-semibold" onClick={() => mutate(d => { d.rest = null; })}>Skip</button>
       </div>
@@ -75,7 +75,7 @@ export default function WorkoutScreen({ onHome }: { onHome: () => void }) {
       if (s.kg === '') s.kg = '0';
       if (warm) { dd.rest = { end: Date.now() + 60000, total: 60, label: 'Ramp-up set', beeped: false }; return; }
       const last = j === e.sets.length - 1, nx = last ? dd.ex[i + 1] : null;
-      const label = last ? (nx ? 'Next: ' + nx.name : 'Last set done') : `Next: set ${j + 2} of ${e.name}`;
+      const label = last ? (nx ? 'Next: ' + nx.name : 'Last set done') : `Next: set ${j + 2} of ${e.sets.length}`;
       dd.rest = { end: Date.now() + e.rest_s * 1000, total: e.rest_s, label, beeped: false };
     });
   };
@@ -84,7 +84,7 @@ export default function WorkoutScreen({ onHome }: { onHome: () => void }) {
 
   const finish = () => {
     const r = finishWorkout();
-    toast(r.sets ? `Saved · ${r.sets} sets · ${fmtKg(r.vol)} kg lifted` : 'Nothing ticked, so nothing saved');
+    toast(r.sets ? `Saved · ${r.sets} set${r.sets === 1 ? '' : 's'} · ${fmtKg(r.vol)} kg lifted` : 'Nothing ticked, so nothing saved');
     onHome();
   };
 
@@ -122,7 +122,7 @@ export default function WorkoutScreen({ onHome }: { onHome: () => void }) {
         <div className="text-center"><b className="block text-[15px]">{d.name}</b><Elapsed since={d.started} /></div>
         <button className="btn" onClick={finish}>Finish</button>
       </div>
-      <div className="mx-auto max-w-[720px] px-[max(4vw,14px)] pb-24">
+      <div className="mx-auto max-w-[720px] px-[max(4vw,14px)] pb-40">
         {routine && checklist('Warm-up', routine.warmup, d.warmupDone, 'warmupDone', 'about 8 min')}
 
         {d.ex.map((e, i) => {
@@ -142,7 +142,7 @@ export default function WorkoutScreen({ onHome }: { onHome: () => void }) {
               <div className="mt-3 mb-1 grid grid-cols-[34px_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_48px] gap-2 px-1 text-xs text-mut max-[420px]:grid-cols-[30px_minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_44px] max-[420px]:gap-1.5">
                 <span>Set</span><span>Previous</span><span className="text-center">{ex.equipment === 'assisted' ? 'Assist kg' : 'kg'}</span><span className="text-center">Reps</span><span />
               </div>
-              {e.warmups.map((s, j) => row(s, i, j, true, j === 0 ? 'Ramp-up ~50%' : 'Ramp-up ~75%'))}
+              {e.warmups.map((s, j) => row(s, i, j, true, j === 0 ? '~50%' : '~75%'))}
               {e.sets.map((s, j) => row(s, i, j, false, prev(j)))}
               <div className="mt-2.5 flex gap-2">
                 <button className="ghost flex-1" onClick={() => mutate(dd => { const l = dd.ex[i].sets.at(-1); dd.ex[i].sets.push({ kg: l?.kg || '', reps: '', done: false }); })}>+ Add set</button>

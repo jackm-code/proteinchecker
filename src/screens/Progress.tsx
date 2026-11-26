@@ -46,6 +46,7 @@ export default function Progress() {
         : <p className="mut">Nothing beat a previous best this week yet. With only a couple of sessions logged, the next 2–3 sessions set your real baseline.</p>}
 
       <h2 className="h2">Weakest areas</h2>
+      {ws === thisWeek && <p className="mut mb-2">The week isn’t over, so set counts will rise as you train. Check again on Sunday.</p>}
       {review.weakest.length ? (
         <div className="grid gap-2">
           {review.weakest.map(w => (
