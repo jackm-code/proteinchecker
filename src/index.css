@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* VOICE: a gym log — quick, plain, numbers first.
+   COLOUR: iron black / white, plate blue for actions, plate red for rest, plate yellow for C, green for food. */
+@theme {
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-mut: var(--mut);
+  --color-line: var(--line);
+  --color-card: var(--card);
+  --color-blue: var(--blue);
+  --color-red: var(--red);
+  --color-yel: var(--yel);
+  --color-grn: var(--grn);
+  --color-done: var(--done);
+  --color-warn: var(--warn);
+}
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --ink: #121417; --mut: #5d636b; --line: #e3e5e8; --card: #f4f5f7;
+  --blue: #1f5fd6; --red: #d92f25; --yel: #e0a800; --grn: #1d7a57; --done: #e8effc; --warn: #b8700e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e1013; --ink: #eef0f2; --mut: #9aa1aa; --line: #262a30; --card: #171a1f;
+    --blue: #5b8cff; --red: #ff5a4e; --yel: #f2c230; --grn: #4cc49a; --done: #15213a; --warn: #e3a043;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1013; --ink: #eef0f2; --mut: #9aa1aa; --line: #262a30; --card: #171a1f;
+  --blue: #5b8cff; --red: #ff5a4e; --yel: #f2c230; --grn: #4cc49a; --done: #15213a; --warn: #e3a043;
+}
+
+html, body { background: var(--bg); color: var(--ink); }
+body { margin: 0; font: 16px/1.5 var(--font-sans); overflow-x: clip; -webkit-tap-highlight-color: transparent; }
+* { min-width: 0; }
+h1, h2, h3, .num { font-family: var(--font-display); font-weight: 700; line-height: 1.05; }
+button { cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center min-h-11 rounded-xl px-4 font-semibold bg-blue text-white disabled:opacity-50; }
+  .ghost { @apply inline-flex items-center justify-center min-h-11 rounded-xl px-3.5 font-medium bg-card text-ink; }
+  .chip { @apply inline-flex items-center min-h-9 rounded-xl px-3 text-sm bg-card; }
+  .field { @apply w-full min-h-11 rounded-xl border border-line bg-bg px-3 text-ink; }
+  .numin { @apply w-full min-h-11 rounded-xl border border-line bg-bg text-center text-ink font-display font-semibold text-lg; }
+  .card { @apply rounded-2xl bg-card p-4; }
+  .mut { @apply text-mut text-sm; }
+  .label { @apply text-xs text-mut; }
+  .h2 { @apply font-display font-bold text-[26px] mt-7 mb-3; }
+}
